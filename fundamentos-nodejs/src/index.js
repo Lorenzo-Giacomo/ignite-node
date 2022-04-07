@@ -28,6 +28,19 @@ function verifyIfExistsAccountCPF(request, response, next) {
   return next()
 }
 
+function getBalance(statement) {
+  // operação reduce pega as infos de determinado valor e transformará em um único valor. Fará o cálculo de tudo aquilo q entrou menos aquilo q saiu. Operation é o objeto q queremos iterar.
+  const balance = statement.reduce((acc, operation) => {
+    if (operation.type === 'credit') {
+      return acc + operation.amount
+    } else {
+      return acc - operation.amount
+    }
+  }, 0)
+
+  return balance
+}
+
 /*
 Dados que uma conta terá:
 cpf - string
@@ -87,6 +100,80 @@ app.post('/deposit', verifyIfExistsAccountCPF, (request, response) => {
 })
 
 // realizar saque
-app.post('/', verifyIfExistsAccountCPF, (request, response) => {})
+app.post('/withdraw', verifyIfExistsAccountCPF, (request, response) => {
+  const { amount } = request.body
+  const { customer } = request
+
+  /* criar função que só permite fazer um saque caso o valor sacado seja menor do q o total da conta. Percorrer pelo array de statemaents e somar todos os amounts para descobrir o total. Se o tipo de operação do statement for 'withdraw'. Criar função externa.
+   */
+
+  const balance = getBalance(customer.statement)
+
+  if (balance < amount) {
+    return response.status(400).json({ error: 'Insufficient funds!' })
+  }
+
+  const statementOperation = {
+    amount,
+    created_at: new Date(),
+    type: 'debit'
+  }
+
+  customer.statement.push(statementOperation)
+  return response.status(201).send()
+})
+
+// buscar extrato por data
+app.get('/statement/date', verifyIfExistsAccountCPF, (request, response) => {
+  const { customer } = request
+  const { date } = request.query
+
+  // transforma a data fornecida
+  const dateFormat = new Date(date + ' 00:00')
+
+  // percorrer a lista de statements e filtrar pela data e filtrar transformando a data e colocar em string exatamente como digitado
+  const statement = customer.statement.filter(
+    statement =>
+      statement.created_at.toDateString() ===
+      new Date(dateFormat).toDateString()
+  )
+
+  return response.json(statement)
+})
+
+// atualizar dados do cliente
+app.put('/account', verifyIfExistsAccountCPF, (request, response) => {
+  const { name } = request.body
+  const { customer } = request
+
+  customer.name = name
+
+  return response.status(201).send()
+})
+// pegar dados de todos os clientes
+app.get('/account', verifyIfExistsAccountCPF, (request, response) => {
+  const { customer } = request
+
+  return response.json(customer)
+})
+
+// excluir dados de um cliente que passamos no header
+app.delete('/account', verifyIfExistsAccountCPF, (request, response) => {
+  const { customer } = request
+
+  // precisamos apagar da lista de customers somente aquele q queremos. Splice() exclui elementos dentro de um array
+  customers.splice(customer, 1)
+
+  return response.json(customers)
+})
+
+// pegar balanço de cada usuário
+app.get('/balance', verifyIfExistsAccountCPF, (request, response) => {
+  const { customer } = request
+
+  const balance = getBalance(customer.statement)
+
+  return response.json(balance)
+})
 
 app.listen(3333)
